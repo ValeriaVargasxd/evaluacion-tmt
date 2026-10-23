@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Test del Trazo - Evaluación Cognitiva</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts (Handwriting style) -->
+    <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+    <!-- HTML2Canvas para descargar resultados -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <style>
+        :root {
+            /* Modo Claro */
+            --bg-color: #fdfbf7;
+            --text-color: #2d3748;
+            --paper-color: #ffffff;
+            --circle-bg: #fdfbf7;
+            --accent-color: #3b82f6;
+            --error-color: #ef4444;
+            --grid-color: rgba(45, 55, 72, 0.1);
+        }
+
+        .dark-mode {
+            /* Modo Oscuro */
+            --bg-color: #1a202c;
+            --text-color: #f7fafc;
+            --paper-color: #2d3748;
+            --circle-bg: #1a202c;
+            --accent-color: #60a5fa;
+            --error-color: #f87171;
+            --grid-color: rgba(247, 250, 252, 0.1);
+        }
+
+        body {
+            font-family: 'Patrick Hand', cursive;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+            overflow-x: hidden;
+            /* Evitar scroll en moviles al dibujar */
+            overscroll-behavior-y: contain;
+        }
+
+        /* Estilo de trazado a lápiz para contenedores */
+        .sketch-border {
+            border: 2px solid var(--text-color);
+            border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+            background-color: var(--paper-color);
+            box-shadow: 4px 4px 0px rgba(0,0,0,0.1);
+        }
+        .dark-mode .sketch-border {
+            box-shadow: 4px 4px 0px rgba(0,0,0,0.5);
+        }
+
+        /* Botones estilo lápiz */
+        .sketch-btn {
+            border: 2px solid var(--text-color);
+            border-radius: 15px 225px 255px 15px/255px 15px 225px 15px;
+            background-color: transparent;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        .sketch-btn:hover {
+            transform: scale(1.05) rotate(-2deg);
+            background-color: var(--text-color);
+            color: var(--paper-color);
+        }
+
+        /* Inputs */
+        .sketch-input {
+            border: 2px solid var(--text-color);
+            border-radius: 10px 200px 10px 200px/200px 10px 200px 10px;
+            background-color: transparent;
+            color: var(--text-color);
+            padding: 0.5rem 1rem;
+            outline: none;
+        }
+        .sketch-input:focus {
+            border-color: var(--accent-color);
+        }
+
+        /* Recuadro de aviso dentro de las indicaciones */
+        .note-box {
+            border: 2px dashed var(--text-color);
+            border-radius: 12px;
+        }
+
+        /* Fichas de la secuencia de ejemplo */
+        .seq-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2.5rem;
+            height: 2.5rem;
+            border: 2px solid var(--text-color);
+            border-radius: 50%;
+            font-size: 1.35rem;
+            font-weight: bold;
+        }
+        .seq-arrow { font-size: 1.35rem; opacity: 0.7; align-self: center; }
+
+        /* Lienzo de ejemplo en las indicaciones (no es interactivo) */
+        .example-canvas {
+            width: 100%;
+            max-width: 440px;
+            height: 150px;
+            margin: 0 auto;
+            touch-action: auto;
+        }
+
+        /* Tabla de resultados */
+        .results-table td, .results-table th { vertical-align: middle; }
+        .results-table tbody tr + tr td { border-top: 1px dashed rgba(127, 127, 127, 0.35); }
+
+        /* Listas con scroll (se expanden al exportar la imagen) */
+        .scroll-list { max-height: 10rem; overflow-y: auto; }
+        .exporting .scroll-list { max-height: none !important; overflow: visible !important; }
+
+        /* Lienzo de dibujo */
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 120px);
+            background-image: radial-gradient(var(--grid-color) 2px, transparent 2px);
+            background-size: 30px 30px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            touch-action: none; /* Crucial para evitar scroll táctil */
+            width: 100%;
+            height: 100%;
+        }
+
+        /* En celulares la barra del cronómetro muestra solo "Parte A/B" para no ocupar varias líneas */
+        @media (max-width: 640px) {
+            .part-sub { display: none; }
+        }
+
+        /* Ocultar secciones */
+        .hidden { display: none !important; }
+
+        /* Iconos SVG (Ajustados al color de texto) */
+        svg { fill: currentColor; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+
+    <!-- Header & Theme Toggle -->
+    <div class="w-full max-w-4xl flex justify-between items-center mb-4">
+        <h1 class="text-3xl font-bold flex items-center gap-2">
+            <svg class="w-8 h-8" viewBox="0 0 24 24"><path d="M7.127 22.562l-7.127 1.438 1.438-7.128 5.689 5.69zm1.414-1.414l11.228-11.225-5.69-5.692-11.227 11.227 5.689 5.69zm9.768-21.148l-2.816 2.817 5.691 5.691 2.816-2.819-5.691-5.689z"/></svg>
+            Test del Trazo
+        </h1>
+        <button id="themeToggle" class="sketch-btn p-2 rounded-full" title="Cambiar Tema">
+            <!-- Icono Luna/Sol -->
+            <svg id="icon-moon" class="w-6 h-6" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
+        </button>
+    </div>
+
+    <!-- ================= MENÚ 1: DATOS DE LA EVALUACIÓN ================= -->
+    <div id="menu-1" class="w-full max-w-xl sketch-border p-6 mt-4">
+        <div class="text-center mb-6">
+            <h2 class="text-2xl font-bold mb-2">Datos de la evaluación</h2>
+            <p class="text-lg leading-tight opacity-90">
+                La prueba consta de <b>dos partes</b>:<br>
+                <b>Parte A:</b> números del <b data-fill="a-range">1 al 10</b>.<br>
+                <b>Parte B:</b> números y letras alternados: <b data-fill="b-seq-short">1 → A → 2 → B …</b><br>
+                Antes de cada parte se mostrarán sus indicaciones.
+            </p>
+        </div>
+
+        <form id="setupForm" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="flex flex-col">
+                    <label class="font-bold" for="input-names">Nombres:</label>
+                    <input type="text" id="input-names" class="sketch-input" autocomplete="given-name" placeholder="Nombres" required>
+                </div>
+                <div class="flex flex-col">
+                    <label class="font-bold" for="input-surnames">Apellidos:</label>
+                    <input type="text" id="input-surnames" class="sketch-input" autocomplete="family-name" placeholder="Apellidos" required>
+                </div>
+                <div class="flex flex-col sm:col-span-2">
+                    <label class="font-bold" for="input-dni">DNI:</label>
+                    <input type="text" id="input-dni" class="sketch-input" inputmode="numeric" autocomplete="off" maxlength="8" pattern="[0-9]{8}" placeholder="8 dígitos" required>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="flex flex-col">
+                    <label class="font-bold">Fecha:</label>
+                    <input type="date" id="input-date" class="sketch-input" required>
+                </div>
+                <div class="flex flex-col">
+                    <label class="font-bold">Hora:</label>
+                    <input type="time" id="input-time" class="sketch-input" required>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="flex flex-col">
+                    <label class="font-bold">Edad:</label>
+                    <input type="number" id="input-age" min="1" max="120" class="sketch-input" placeholder="Ej. 25" required>
+                </div>
+                <div class="flex flex-col">
+                    <label class="font-bold">Código Evaluado:</label>
+                    <input type="text" id="input-code" class="sketch-input" placeholder="Ej. P-001" required>
+                </div>
+            </div>
+
+            <div class="flex flex-col mt-4">
+                <label class="font-bold flex justify-between">
+                    <span>Tiempo Límite por parte (Minutos):</span>
+                    <span id="time-display" class="text-xl">5 min</span>
+                </label>
+                <input type="range" id="input-timeLimit" min="1" max="10" value="5" class="w-full mt-2 cursor-pointer">
+            </div>
+
+            <div class="text-center mt-8">
+                <button type="submit" class="sketch-btn px-8 py-3 text-2xl w-full">
+                    Continuar
+                    <svg class="w-6 h-6" viewBox="0 0 24 24"><path d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- ================= INDICACIONES: PARTE A ================= -->
+    <div id="menu-instr-A" class="w-full max-w-2xl sketch-border p-6 sm:p-8 mt-4 hidden">
+        <p class="text-center text-sm uppercase tracking-widest opacity-60">Indicaciones</p>
+        <h2 class="text-3xl font-bold text-center mb-1">Parte A · Números</h2>
+        <p class="text-center italic opacity-70 mb-5">📢 Evaluador: lea estas indicaciones en voz alta antes de comenzar.</p>
+
+        <p class="text-xl leading-snug mb-4">
+            En la pantalla aparecerán círculos con los números del <b data-fill="a-range">1 al 10</b>, repartidos al azar.
+            Tu tarea es unirlos <b>en orden ascendente</b> con una sola línea continua: empieza en el <b>1</b>
+            (marcado como «Inicio») y continúa 2, 3, 4… hasta llegar al <b data-fill="a-last">10</b> (marcado como «Fin»).
+        </p>
+
+        <div class="mb-5">
+            <canvas id="example-A" class="example-canvas"></canvas>
+            <p class="text-center text-base opacity-70">Ejemplo de un trazo correcto</p>
+        </div>
+
+        <h3 class="text-2xl font-bold mb-1">✍️ ¿Cómo se hace?</h3>
+        <ol class="list-decimal pl-6 text-lg space-y-1 mb-4">
+            <li>Apoya el dedo (o mantén presionado el clic) sobre el círculo <b>1</b>.</li>
+            <li>Sin levantarlo, deslízalo hasta el siguiente círculo. Al tocarlo, la línea queda fijada.</li>
+            <li>Continúa así, círculo por círculo, hasta llegar al último.</li>
+        </ol>
+
+        <h3 class="text-2xl font-bold mb-1 text-red-500">⚠️ Reglas</h3>
+        <ul class="text-lg space-y-1 mb-5">
+            <li>👆 <b>No levantes el dedo</b> hasta terminar. Si lo levantas, vuelve a apoyarlo sobre el último círculo alcanzado (en azul) y continúa.</li>
+            <li>❌ <b>Las líneas no deben cruzarse.</b> Si se cruzan, el trazo se detiene: vuelve a empezar desde el último círculo alcanzado.</li>
+            <li>↩️ <b>Si te equivocas</b>, regresa por la línea hasta el círculo anterior (o toca un círculo anterior): el trazo se borrará hasta ese punto y podrás seguir.</li>
+        </ul>
+
+        <div class="note-box p-3 text-lg text-center mb-6">
+            ⏱️ Trabaja <b>lo más rápido que puedas</b>, pero con cuidado de no equivocarte.<br>
+            El cronómetro empieza al presionar <b>«Comenzar Parte A»</b>.
+        </div>
+
+        <button id="btn-start-a" class="sketch-btn px-8 py-3 text-2xl w-full">
+            <svg class="w-6 h-6" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            Comenzar Parte A
+        </button>
+        <div class="text-center mt-4">
+            <button id="btn-back-data" class="underline opacity-70 hover:opacity-100 text-lg">← Volver a los datos</button>
+        </div>
+    </div>
+
+    <!-- ================= INDICACIONES: PARTE B ================= -->
+    <div id="menu-instr-B" class="w-full max-w-2xl sketch-border p-6 sm:p-8 mt-4 hidden">
+        <div class="text-center mb-4 p-2 rounded-xl bg-black bg-opacity-5 text-lg">
+            🏁 Parte A finalizada · Estado: <b id="instrB-status">--</b>
+        </div>
+
+        <p class="text-center text-sm uppercase tracking-widest opacity-60">Indicaciones</p>
+        <h2 class="text-3xl font-bold text-center mb-1">Parte B · Números y Letras</h2>
+        <p class="text-center italic opacity-70 mb-5">📢 Evaluador: lea estas indicaciones en voz alta antes de comenzar.</p>
+
+        <p class="text-xl leading-snug mb-4">
+            Ahora aparecerán círculos con <b>números</b> (del <b data-fill="b-num-range">1 al 10</b>)
+            y <b>letras</b> (de la <b data-fill="b-let-range">A a la J</b>).
+            Tu tarea es unirlos <b>alternando</b> entre un número y una letra, ambos en orden ascendente:
+            del 1 a la A, de la A al 2, del 2 a la B, de la B al 3… y así sucesivamente hasta terminar en
+            <b data-fill="b-end">el 13</b> (el círculo marcado como «Fin»).
+        </p>
+
+        <div id="seq-B" class="flex flex-wrap justify-center gap-2 mb-4">
+            <!-- Se llena via JS -->
+        </div>
+
+        <div class="mb-5">
+            <canvas id="example-B" class="example-canvas"></canvas>
+            <p class="text-center text-base opacity-70">Ejemplo de un trazo correcto</p>
+        </div>
+
+        <h3 class="text-2xl font-bold mb-1">✍️ ¿Cómo se hace?</h3>
+        <ol class="list-decimal pl-6 text-lg space-y-1 mb-4">
+            <li>Apoya el dedo (o mantén presionado el clic) sobre el círculo <b>1</b>.</li>
+            <li>Sin levantarlo, deslízalo hasta la <b>A</b>, luego al <b>2</b>, luego a la <b>B</b>, y así sucesivamente.</li>
+            <li>Continúa alternando número y letra hasta llegar al último círculo.</li>
+        </ol>
+
+        <h3 class="text-2xl font-bold mb-1 text-red-500">⚠️ Reglas</h3>
+        <ul class="text-lg space-y-1 mb-5">
+            <li>🔀 <b>Siempre alterna:</b> no unas un número con otro número ni una letra con otra letra.</li>
+            <li>👆 <b>No levantes el dedo</b> hasta terminar. Si lo levantas, vuelve a apoyarlo sobre el último círculo alcanzado (en azul) y continúa.</li>
+            <li>❌ <b>Las líneas no deben cruzarse.</b> Si se cruzan, el trazo se detiene: vuelve a empezar desde el último círculo alcanzado.</li>
+            <li>↩️ <b>Si te equivocas</b>, regresa por la línea hasta el círculo anterior (o toca un círculo anterior): el trazo se borrará hasta ese punto y podrás seguir.</li>
+        </ul>
+
+        <div class="note-box p-3 text-lg text-center mb-6">
+            ⏱️ Trabaja <b>lo más rápido que puedas</b>, pero con cuidado de no equivocarte.<br>
+            El cronómetro empieza al presionar <b>«Comenzar Parte B»</b>.
+        </div>
+
+        <button id="btn-start-b" class="sketch-btn px-8 py-3 text-2xl w-full">
+            <svg class="w-6 h-6" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            Comenzar Parte B
+        </button>
+    </div>
+
+    <!-- ================= MENÚ 2: LA PRUEBA (CANVAS) ================= -->
+    <div id="menu-2" class="w-full max-w-4xl hidden flex-col">
+        <!-- Barra superior del cronómetro -->
+        <div class="flex justify-between items-center gap-2 mb-2 px-4 py-2 sketch-border rounded-lg bg-opacity-50">
+            <div class="text-lg sm:text-xl font-bold flex items-center gap-2 whitespace-nowrap">
+                <svg class="w-6 h-6" viewBox="0 0 24 24"><path d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm1 12v-6h-2v8h7v-2h-5z"/></svg>
+                <span id="timer-display">00:00.000</span>
+            </div>
+            <div class="text-lg sm:text-xl font-bold text-center whitespace-nowrap">
+                <span id="part-name">Parte A</span><span class="part-sub"> · <span id="part-sub">Números</span></span>
+            </div>
+            <div class="text-base sm:text-lg opacity-80 whitespace-nowrap">
+                Límite: <span id="limit-display">5:00</span>
+            </div>
+        </div>
+
+        <!-- Contenedor del lienzo -->
+        <div class="canvas-container sketch-border" id="canvas-wrapper">
+            <canvas id="gameCanvas"></canvas>
+            <!-- Mensaje temporal de error -->
+            <div id="error-toast" class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-1 rounded-full font-bold opacity-0 transition-opacity duration-300 pointer-events-none shadow-md z-10">
+                ¡Error!
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MENÚ 3: RESULTADOS ================= -->
+    <div id="menu-3" class="w-full max-w-3xl hidden mt-4">
+        <div id="results-card" class="sketch-border p-6 sm:p-8">
+            <h2 class="text-4xl font-bold text-center mb-6 border-b-2 border-current pb-2">Resultados del Test</h2>
+            <p id="sheets-save-status" class="text-center text-sm mb-4 opacity-80" role="status">Registro automático: pendiente de configuración.</p>
+
+            <div class="grid grid-cols-2 gap-4 mb-6 text-lg">
+                <p><b>Fecha:</b> <span id="res-date"></span></p>
+                <p><b>Hora:</b> <span id="res-time"></span></p>
+                <p class="col-span-2"><b>Nombres y apellidos:</b> <span id="res-fullname"></span></p>
+                <p><b>DNI:</b> <span id="res-dni"></span></p>
+                <p><b>Edad:</b> <span id="res-age"></span></p>
+                <p><b>Código:</b> <span id="res-code"></span></p>
+                <p class="col-span-2"><b>Tiempo límite por parte:</b> <span id="res-limit"></span></p>
+            </div>
+
+            <!-- Tabla comparativa Parte A / Parte B -->
+            <div class="bg-black bg-opacity-5 p-2 sm:p-4 rounded-xl mb-6 overflow-x-auto">
+                <table class="results-table w-full text-base sm:text-lg">
+                    <thead>
+                        <tr class="border-b-2 border-current">
+                            <th class="text-left pb-2">Indicador</th>
+                            <th class="text-center pb-2 px-2">Parte A<br><span id="res-head-A" class="text-sm font-normal opacity-70">Números</span></th>
+                            <th class="text-center pb-2 px-2">Parte B<br><span id="res-head-B" class="text-sm font-normal opacity-70">Números y letras</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="res-table-body">
+                        <!-- Se llena via JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Índices derivados (solo se muestran si ambas partes tienen la misma cantidad de círculos) -->
+            <div id="res-derived-box" class="mb-6 p-4 rounded-xl border-2 border-current border-dashed">
+                <h3 class="text-xl font-bold mb-2">📊 Índices derivados</h3>
+                <div class="grid grid-cols-2 gap-4 text-lg">
+                    <p>Diferencia B − A: <b id="res-diff" class="text-2xl">--</b></p>
+                    <p>Razón B / A: <b id="res-ratio" class="text-2xl">--</b></p>
+                </div>
+                <p id="res-derived-note" class="text-base italic opacity-70 mt-1 hidden">
+                    No calculables: alguna parte no se completó dentro del tiempo límite.
+                </p>
+            </div>
+
+            <!-- Correcciones de cada parte -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+                <div>
+                    <h3 class="text-xl font-bold mb-2">↩️ Correcciones Parte A: <span id="res-corrections-count-A">0</span></h3>
+                    <div id="res-corrections-list-A" class="scroll-list text-lg opacity-80 border-l-2 border-current pl-4 space-y-1"></div>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold mb-2">↩️ Correcciones Parte B: <span id="res-corrections-count-B">0</span></h3>
+                    <div id="res-corrections-list-B" class="scroll-list text-lg opacity-80 border-l-2 border-current pl-4 space-y-1"></div>
+                </div>
+            </div>
+
+            <!-- Trazos finales de cada parte -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-xl font-bold mb-2">✏️ Trazo Parte A</h3>
+                    <img id="res-trace-A" alt="Trazo final de la Parte A" class="w-full rounded-lg border-2 border-current">
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold mb-2">✏️ Trazo Parte B</h3>
+                    <img id="res-trace-B" alt="Trazo final de la Parte B" class="w-full rounded-lg border-2 border-current">
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 mt-8 justify-center">
+            <button id="btn-download" class="sketch-btn px-6 py-3 text-xl">
+                <svg class="w-6 h-6" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                Descargar Imagen
+            </button>
+            <button id="btn-restart" class="sketch-btn px-6 py-3 text-xl">
+                <svg class="w-6 h-6" viewBox="0 0 24 24"><path d="M12 2.75a9.25 9.25 0 1 0 4.737 17.197l-1.353-1.492A7.25 7.25 0 1 1 19.25 12h-2l3.125 4 3.125-4h-2.05A9.25 9.25 0 0 0 12 2.75z"/></svg>
+                Nueva Prueba
+            </button>
+        </div>
+    </div>
+
+    <!-- SCRIPT PRINCIPAL -->
+    <script>
+        // ================= CONFIGURACIÓN =================
+        // Cantidad de círculos de cada parte:
+        //   Parte A: 10 círculos -> 1, 2, 3 … 10
+        //   Parte B: 25 círculos -> 1, A, 2, B, 3, C … 12, L, 13
+        const NODES_A = 10;
+        const NODES_B = 25;
+        const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+        const PARTS = {
+            A: { name: 'Parte A', subtitle: 'Números' },
+            B: { name: 'Parte B', subtitle: 'Números y letras' }
+        };
+
+        // Ejemplos que se dibujan en las indicaciones (posiciones relativas 0–1)
+        const EXAMPLES = {
+            A: { labels: ['1', '2', '3', '4', '5'],
+                 pts: [[0.10, 0.68], [0.30, 0.30], [0.50, 0.70], [0.70, 0.32], [0.90, 0.66]] },
+            B: { labels: ['1', 'A', '2', 'B', '3', 'C'],
+                 pts: [[0.08, 0.68], [0.25, 0.32], [0.42, 0.70], [0.58, 0.30], [0.75, 0.68], [0.92, 0.32]] }
+        };
+
+        const DOWNLOAD_ICON = `<svg class="w-6 h-6" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Descargar Imagen`;
+
+        function nodesFor(part) {
+            return part === 'A' ? NODES_A : NODES_B;
+        }
+
+        // Genera las etiquetas de los círculos según la parte
+        // Parte A: "1","2","3"…   Parte B: "1","A","2","B","3","C"…
+        function buildLabels(part) {
+            const n = nodesFor(part);
+            const labels = [];
+            for (let i = 0; i < n; i++) {
+                if (part === 'A') {
+                    labels.push(String(i + 1));
+                } else {
+                    labels.push(i % 2 === 0 ? String(i / 2 + 1) : LETTERS[(i - 1) / 2]);
+                }
+            }
+            return labels;
+        }
+
+        function isLetter(label) {
+            return /^[A-Z]$/.test(label);
+        }
+
+        // ================= ESTADO DE LA APP =================
+        function newMetrics() {
+            return {
+                lifts: 0,
+                crosses: 0,
+                omissions: 0,
+                switchErrors: 0,   // Solo Parte B: no alternó (número→número o letra→letra)
+                corrections: []    // array de {from, to} (etiquetas)
+            };
+        }
+
+        // CONFIGURACIÓN: pega aquí la URL de tu Aplicación web de Google Apps Script (termina en /exec).
+        const GOOGLE_SHEETS_WEB_APP_URL = 'https://hook.us2.make.com/e81tc6jjbbs6zcqgnz57bpmhbmgjsf8r';
+
+        const state = {
+            theme: 'light',
+            evalData: {},
+            currentPart: 'A',
+            results: { A: null, B: null },
+            metrics: newMetrics(),
+            timer: {
+                start: 0,
+                elapsed: 0,
+                limitMs: 0,
+                interval: null
+            },
+            game: {
+                nodes: [],       // {x, y, id, label}  (id = posición en la secuencia: 1…N)
+                path: [],        // ids de los nodos alcanzados ej: [1, 2, 3]
+                isDragging: false,
+                dragPos: {x: 0, y: 0},
+                lastValidNode: null,
+                nodeRadius: 25,  // se ajusta según pantalla y cantidad de círculos
+                active: false,   // true mientras una parte está en curso
+                finished: false
+            },
+            loopRunning: false
+        };
+
+        // ================= ELEMENTOS DEL DOM =================
+        const views = {
+            menu1: document.getElementById('menu-1'),
+            instrA: document.getElementById('menu-instr-A'),
+            instrB: document.getElementById('menu-instr-B'),
+            menu2: document.getElementById('menu-2'),
+            menu3: document.getElementById('menu-3')
+        };
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const toast = document.getElementById('error-toast');
+
+        function showView(name) {
+            Object.values(views).forEach(v => {
+                v.classList.add('hidden');
+                v.classList.remove('flex');
+            });
+            views[name].classList.remove('hidden');
+            if (name === 'menu2') views.menu2.classList.add('flex');
+        }
+
+        function isVisible(name) {
+            return !views[name].classList.contains('hidden');
+        }
+
+        function themeColors() {
+            const isDark = state.theme === 'dark';
+            return {
+                strokeCol: isDark ? '#f7fafc' : '#2d3748',
+                fillCol: isDark ? '#1a202c' : '#fdfbf7',
+                accentCol: isDark ? '#60a5fa' : '#3b82f6'
+            };
+        }
+
+        // ================= INICIALIZACIÓN =================
+        function localDateISO(d) {
+            const p = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+        }
+
+        function init() {
+            // Valores por defecto fecha y hora (fecha local, no UTC)
+            const now = new Date();
+            document.getElementById('input-date').value = localDateISO(now);
+            document.getElementById('input-time').value = now.toTimeString().slice(0, 5);
+
+            // Textos de indicaciones según la configuración
+            fillTexts();
+
+            // Eventos Formulario
+            const timeSlider = document.getElementById('input-timeLimit');
+            const timeDisplay = document.getElementById('time-display');
+            timeSlider.addEventListener('input', (e) => {
+                timeDisplay.innerText = `${e.target.value} min`;
+            });
+
+            document.getElementById('setupForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                saveEvalData();
+                showInstructions('A');
+            });
+
+            // Botones de las indicaciones
+            document.getElementById('btn-start-a').addEventListener('click', () => startPart('A'));
+            document.getElementById('btn-start-b').addEventListener('click', () => startPart('B'));
+            document.getElementById('btn-back-data').addEventListener('click', () => showView('menu1'));
+
+            // Tema
+            document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
+            // Botones Finales
+            document.getElementById('btn-download').addEventListener('click', downloadResults);
+            document.getElementById('btn-restart').addEventListener('click', () => location.reload());
+
+            // Redimensionar
+            window.addEventListener('resize', () => {
+                resizeCanvas();
+                redrawVisibleExample();
+            });
+
+            // Eventos del Mouse/Touch (se registran UNA sola vez para ambas partes)
+            setupCanvasEvents();
+        }
+
+        // Rellena los textos que dependen de NODES_A / NODES_B
+        function fillTexts() {
+            const labelsA = buildLabels('A');
+            const labelsB = buildLabels('B');
+            const numsB = labelsB.filter(l => !isLetter(l));
+            const letsB = labelsB.filter(l => isLetter(l));
+            const endB = labelsB[labelsB.length - 1];
+
+            const texts = {
+                'a-range': `1 al ${labelsA[labelsA.length - 1]}`,
+                'a-last': labelsA[labelsA.length - 1],
+                'b-num-range': `1 al ${numsB[numsB.length - 1]}`,
+                'b-let-range': `A a la ${letsB[letsB.length - 1]}`,
+                'b-end': isLetter(endB) ? `la ${endB}` : `el ${endB}`,
+                'b-seq-short': `${labelsB.slice(0, 4).join(' → ')} … ${endB}`
+            };
+            Object.entries(texts).forEach(([key, value]) => {
+                document.querySelectorAll(`[data-fill="${key}"]`).forEach(el => { el.textContent = value; });
+            });
+
+            // Fichas de la secuencia en las indicaciones de la Parte B: 1 → A → 2 → B → 3 → C → … → J
+            const seqEl = document.getElementById('seq-B');
+            seqEl.innerHTML = '';
+            const addChip = (text) => {
+                const chip = document.createElement('span');
+                chip.className = 'seq-chip';
+                chip.textContent = text;
+                seqEl.appendChild(chip);
+            };
+            const addArrow = (text) => {
+                const arrow = document.createElement('span');
+                arrow.className = 'seq-arrow';
+                arrow.textContent = text;
+                seqEl.appendChild(arrow);
+            };
+            labelsB.slice(0, 6).forEach((l, i) => {
+                if (i > 0) addArrow('→');
+                addChip(l);
+            });
+            if (labelsB.length > 6) {
+                addArrow('→ … →');
+                addChip(endB);
+            }
+
+            // Encabezados de la tabla de resultados
+            document.getElementById('res-head-A').textContent = `Números (${labelsA[0]}–${labelsA[labelsA.length - 1]})`;
+            document.getElementById('res-head-B').textContent =
+                `Números y letras (1–${numsB[numsB.length - 1]} · A–${letsB[letsB.length - 1]})`;
+        }
+
+        function toggleTheme() {
+            state.theme = state.theme === 'light' ? 'dark' : 'light';
+            if (state.theme === 'dark') {
+                document.body.classList.add('dark-mode');
+            } else {
+                document.body.classList.remove('dark-mode');
+            }
+            if (isVisible('menu2')) drawCanvas(); // Redibujar si está jugando
+            redrawVisibleExample();
+        }
+
+        // ================= INDICACIONES =================
+        function showInstructions(part) {
+            if (part === 'B') {
+                const a = state.results.A;
+                document.getElementById('instrB-status').innerText =
+                    a && a.status === 'Completado' ? 'Completada' : 'Tiempo agotado';
+            }
+            showView(part === 'A' ? 'instrA' : 'instrB');
+            drawExample(part);
+            window.scrollTo(0, 0);
+        }
+
+        function redrawVisibleExample() {
+            if (isVisible('instrA')) drawExample('A');
+            if (isVisible('instrB')) drawExample('B');
+        }
+
+        // Dibuja un pequeño ejemplo de trazo correcto (con flechas de dirección)
+        function drawExample(part) {
+            const c = document.getElementById(`example-${part}`);
+            if (!c || !c.clientWidth) return;
+
+            const W = c.clientWidth;
+            const H = c.clientHeight;
+            const dpr = window.devicePixelRatio || 1;
+            c.width = Math.round(W * dpr);
+            c.height = Math.round(H * dpr);
+
+            const ex = EXAMPLES[part];
+            const g = c.getContext('2d');
+            g.setTransform(dpr, 0, 0, dpr, 0, 0);
+            g.clearRect(0, 0, W, H);
+
+            const { strokeCol, fillCol, accentCol } = themeColors();
+            const P = ex.pts.map(([px, py]) => ({ x: px * W, y: py * H }));
+            const r = Math.min(18, W / (ex.labels.length * 3));
+
+            // Línea del trazo
+            g.lineWidth = 3;
+            g.lineCap = 'round';
+            g.lineJoin = 'round';
+            g.strokeStyle = accentCol;
+            g.beginPath();
+            P.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)));
+            g.stroke();
+
+            // Flechas de dirección a mitad de cada tramo
+            g.fillStyle = accentCol;
+            for (let i = 0; i < P.length - 1; i++) {
+                const a = P[i], b = P[i + 1];
+                g.save();
+                g.translate((a.x + b.x) / 2, (a.y + b.y) / 2);
+                g.rotate(Math.atan2(b.y - a.y, b.x - a.x));
+                g.beginPath();
+                g.moveTo(7, 0);
+                g.lineTo(-5, -6);
+                g.lineTo(-5, 6);
+                g.closePath();
+                g.fill();
+                g.restore();
+            }
+
+            // Círculos con su etiqueta
+            g.textAlign = 'center';
+            g.textBaseline = 'middle';
+            P.forEach((p, i) => {
+                g.beginPath();
+                g.arc(p.x, p.y, r, 0, Math.PI * 2);
+                g.fillStyle = fillCol;
+                g.fill();
+                g.lineWidth = 2.5;
+                g.strokeStyle = strokeCol;
+                g.stroke();
+                g.fillStyle = strokeCol;
+                g.font = `bold ${Math.round(r * 1.05)}px 'Patrick Hand', cursive`;
+                g.fillText(ex.labels[i], p.x, p.y + 1);
+            });
+
+            g.font = "13px 'Patrick Hand', cursive";
+            g.fillText('Inicio', P[0].x, P[0].y - r - 9);
+        }
+
+        // ================= FLUJO DE LA EVALUACIÓN =================
+        function saveEvalData() {
+            state.evalData = {
+                names: document.getElementById('input-names').value.trim(),
+                surnames: document.getElementById('input-surnames').value.trim(),
+                dni: document.getElementById('input-dni').value.trim(),
+                date: document.getElementById('input-date').value,
+                time: document.getElementById('input-time').value,
+                age: document.getElementById('input-age').value,
+                code: document.getElementById('input-code').value,
+                timeLimit: parseInt(document.getElementById('input-timeLimit').value)
+            };
+            state.results = { A: null, B: null };
+        }
+
+        function startPart(part) {
+            state.currentPart = part;
+            state.game.active = false;
+            state.game.finished = false;
+
+            // Cambiar vista y rotular la parte
+            document.getElementById('part-name').innerText = PARTS[part].name;
+            document.getElementById('part-sub').innerText = PARTS[part].subtitle;
+            showView('menu2');
+            window.scrollTo(0, 0);
+
+            // Configurar Canvas
+            resizeCanvas();
+            generateNodes(part);
+
+            // Setup variables de juego
+            state.metrics = newMetrics();
+            state.game.path = [];
+            state.game.isDragging = false;
+            state.game.lastValidNode = null;
+            toast.classList.add('opacity-0');
+
+            // Iniciar Temporizador
+            clearInterval(state.timer.interval);
+            state.timer.limitMs = state.evalData.timeLimit * 60 * 1000;
+            state.timer.elapsed = 0;
+            state.timer.start = Date.now();
+            document.getElementById('limit-display').innerText = `${state.evalData.timeLimit}:00`;
+            document.getElementById('timer-display').innerText = '00:00.000';
+            state.timer.interval = setInterval(updateTimer, 10);
+
+            state.game.active = true;
+
+            // Loop de dibujado
+            startDrawLoop();
+        }
+
+        function resizeCanvas() {
+            const wrapper = document.getElementById('canvas-wrapper');
+            if (!isVisible('menu2')) return; // El lienzo está oculto
+
+            // Ajustar la altura del lienzo al espacio que queda visible en pantalla,
+            // para que ningún círculo quede fuera de la vista (sobre todo en celulares)
+            const top = wrapper.getBoundingClientRect().top + window.scrollY;
+            const availH = Math.max(320, Math.floor(window.innerHeight - top - 16));
+            wrapper.style.height = `${availH}px`;
+
+            const newW = wrapper.clientWidth;
+            const newH = wrapper.clientHeight;
+            if (!newW || !newH) return; // El lienzo está oculto
+
+            const oldW = canvas.width;
+            const oldH = canvas.height;
+            if (newW === oldW && newH === oldH) return;
+
+            canvas.width = newW;
+            canvas.height = newH;
+
+            // Si la prueba está en curso (rotación de pantalla, barra del navegador),
+            // reescalar los nodos para que no queden fuera del lienzo.
+            // Un escalado así conserva la propiedad de que el camino no se auto-cruza.
+            if (state.game.active && oldW && oldH) {
+                const sx = newW / oldW;
+                const sy = newH / oldH;
+                state.game.nodes.forEach(n => { n.x *= sx; n.y *= sy; });
+            }
+        }
+
+        // --- Generación de Nodos ---
+        function generateNodes(part) {
+            const N = nodesFor(part);
+            const labels = buildLabels(part);
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // Radio de los círculos adaptado a la pantalla y a la cantidad de círculos
+            // (en celulares, la Parte B usa círculos algo más pequeños para que quepan todos)
+            const r = Math.max(16, Math.min(25, Math.sqrt((w * h) / N) * 0.2));
+            state.game.nodeRadius = r;
+
+            // Camino "limpio": ninguna línea correcta pasa sobre otro círculo.
+            // Si la pantalla fuera demasiado pequeña, se usa el método de respaldo.
+            const pts = buildLayout(N, w, h, r) || buildMonotoneLayout(N, w, h, r);
+
+            // Asignar posición en la secuencia (id) y etiqueta visible (label)
+            pts.forEach((p, i) => {
+                p.id = i + 1;
+                p.label = labels[i];
+            });
+
+            state.game.nodes = pts;
+        }
+
+        // ================= DISTRIBUCIÓN DE LOS CÍRCULOS =================
+        // LAYOUT-START
+        function distPointSeg(p, a, b) {
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const len2 = dx * dx + dy * dy;
+            let t = len2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2 : 0;
+            t = Math.max(0, Math.min(1, t));
+            return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+        }
+
+        function distSegSeg(a, b, c, d) {
+            if (segmentsIntersect(a, b, c, d)) return 0;
+            return Math.min(distPointSeg(a, c, d), distPointSeg(b, c, d), distPointSeg(c, a, b), distPointSeg(d, a, b));
+        }
+
+        // Construye el recorrido correcto paso a paso (1 → 2 → 3… o 1 → A → 2…), como un
+        // "paseo" aleatorio que nunca se cruza y deja espacio libre alrededor de cada línea:
+        //  - Ningún otro círculo queda a menos de nodeClear del tramo que une dos círculos
+        //    consecutivos (así el dedo no "tropieza" con un círculo equivocado ni con uno ya unido).
+        //  - Los tramos no consecutivos quedan separados al menos segClear (evita cruces accidentales).
+        //  - Los círculos mantienen una separación mínima entre sí.
+        // Los demás círculos siguen repartidos por la pantalla como distractores, pero
+        // nunca sobre el camino correcto.
+        function buildLayout(N, w, h, r, opts = {}) {
+            // Se generan varios recorridos válidos durante un tiempo breve y se elige el MENOS
+            // evidente: aquel en que el círculo correcto siguiente casi nunca es simplemente el
+            // más cercano (siempre hay distractores más próximos que el objetivo).
+            const budgetMs = opts.budgetMs ?? 150;
+            const target = opts.target ?? 0.15;   // ≤ 15 % de pasos "obvios" se acepta de inmediato
+            const t0 = Date.now();
+            let best = null, bestScore = Infinity;
+            do {
+                const pts = buildPathOnce(N, w, h, r, opts);
+                if (!pts) break;
+                // También se penaliza que los círculos queden amontonados en una zona de la pantalla
+                const score = pathObviousness(pts) + 0.8 * Math.max(0, 0.7 - layoutCoverage(pts, w, h, r));
+                if (score < bestScore) { bestScore = score; best = pts; }
+                if (bestScore <= target) break;
+            } while (Date.now() - t0 < budgetMs);
+            return best;
+        }
+
+        // Proporción del área útil que ocupa el rectángulo que envuelve a todos los círculos (0–1)
+        function layoutCoverage(pts, w, h, r) {
+            const pad = r + 22;
+            const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+            const fx = (Math.max(...xs) - Math.min(...xs)) / Math.max(1, w - 2 * pad);
+            const fy = (Math.max(...ys) - Math.min(...ys)) / Math.max(1, h - 2 * pad);
+            return fx * fy;
+        }
+
+        // Fracción de pasos en los que el siguiente círculo correcto es el NO visitado más cercano
+        // (0 = nada evidente, 1 = basta con ir siempre al más cercano). Se penaliza también que el
+        // objetivo sea el segundo más cercano, para que haya varios distractores alrededor.
+        function pathObviousness(pts) {
+            let score = 0;
+            for (let i = 0; i < pts.length - 1; i++) {
+                const dT = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+                let closer = 0;
+                for (let j = i + 2; j < pts.length; j++) {
+                    if (Math.hypot(pts[j].x - pts[i].x, pts[j].y - pts[i].y) < dT) closer++;
+                }
+                const remaining = pts.length - i - 2;   // al final quedan pocos distractores posibles
+                if (closer === 0 && remaining >= 1) score += 1;
+                else if (closer === 1 && remaining >= 3) score += 0.4;
+            }
+            return score / (pts.length - 1);
+        }
+
+        function buildPathOnce(N, w, h, r, opts = {}) {
+            const pad = r + 22;                  // margen (deja sitio para «Inicio»/«Fin»)
+            const W = w - 2 * pad, H = h - 2 * pad;
+            if (W <= 0 || H <= 0) return null;
+
+            let minNodeDist = 2.8 * r;           // distancia mínima entre centros
+            let nodeClear = 2.2 * r;             // distancia mínima de otro centro a un tramo
+            let segClear = 1.2 * r;              // distancia mínima entre tramos no consecutivos
+            // Pasos largos: entre un círculo y el siguiente suele haber otros (distractores)
+            const minStep = Math.max(3 * r, Math.min(W, H) * (opts.minStepFrac ?? 0.25));
+            const maxStep = Math.max(minStep * 1.5, Math.min(W, H) * (opts.maxStepFrac ?? 0.7));
+            const rand = (a, b) => a + Math.random() * (b - a);
+
+            function isValidStep(pts, c) {
+                const prev = pts[pts.length - 1];
+                for (let i = 0; i < pts.length; i++) {
+                    const p = pts[i];
+                    if (Math.hypot(p.x - c.x, p.y - c.y) < minNodeDist) return false;
+                    // El nuevo tramo (prev → c) no debe pasar cerca de ningún otro círculo
+                    if (i < pts.length - 1 && distPointSeg(p, prev, c) < nodeClear) return false;
+                }
+                for (let i = 0; i < pts.length - 1; i++) {
+                    // El nuevo círculo no debe quedar sobre ningún tramo ya trazado
+                    if (distPointSeg(c, pts[i], pts[i + 1]) < nodeClear) return false;
+                    // Ni cruzarse ni acercarse demasiado a tramos no consecutivos
+                    if (i < pts.length - 2 && distSegSeg(prev, c, pts[i], pts[i + 1]) < segClear) return false;
+                }
+                return true;
+            }
+
+            for (let attempt = 1; attempt <= 300; attempt++) {
+                const pts = [{ x: pad + Math.random() * W, y: pad + Math.random() * H }];
+                const closer = [];   // closer[i]: distractores más cercanos a pts[i] que su objetivo pts[i+1]
+                while (pts.length < N) {
+                    const prev = pts[pts.length - 1];
+                    let c = null, cScore = -1, found = 0;
+                    for (let t = 0; t < 300 && found < 12; t++) {
+                        const ang = Math.random() * Math.PI * 2;
+                        const d = rand(minStep, maxStep);
+                        const cand = { x: prev.x + Math.cos(ang) * d, y: prev.y + Math.sin(ang) * d };
+                        if (cand.x < pad || cand.x > w - pad || cand.y < pad || cand.y > h - pad) continue;
+                        if (!isValidStep(pts, cand)) continue;
+                        found++;
+                        // Preferir posiciones que funcionen como distractor de pasos anteriores:
+                        // quedar más cerca de un círculo ya colocado que el objetivo de ese círculo.
+                        let score = Math.random() * 0.5;
+                        for (let i = 0; i < pts.length - 1; i++) {
+                            const stepLen = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+                            if (Math.hypot(cand.x - pts[i].x, cand.y - pts[i].y) < stepLen) {
+                                score += closer[i] === 0 ? 1 : closer[i] === 1 ? 0.4 : 0.05;
+                            }
+                        }
+                        if (score > cScore) { cScore = score; c = cand; }
+                    }
+                    if (!c) break; // Sin salida: se reinicia el recorrido
+                    for (let i = 0; i < pts.length - 1; i++) {
+                        const stepLen = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+                        if (Math.hypot(c.x - pts[i].x, c.y - pts[i].y) < stepLen) closer[i]++;
+                    }
+                    closer.push(0);
+                    pts.push(c);
+                }
+                if (pts.length === N) return pts;
+                // Tras muchos intentos fallidos (pantallas muy pequeñas) se relajan un poco las distancias
+                if (attempt % 40 === 0) { minNodeDist *= 0.93; nodeClear *= 0.93; segClear *= 0.9; }
+            }
+            return null;
+        }
+        // LAYOUT-END
+
+        // Método de respaldo (solo si no se encontró un camino limpio): puntos al azar ordenados
+        // según su proyección sobre una dirección aleatoria; el camino resultante no se auto-cruza.
+        function buildMonotoneLayout(N, w, h, r) {
+            const pad = r + 20;
+            const pts = [];
+            let minDist = r * 3;
+            let attempts = 0;
+            while (pts.length < N) {
+                const nx = pad + Math.random() * Math.max(1, w - pad * 2);
+                const ny = pad + Math.random() * Math.max(1, h - pad * 2);
+                const overlap = pts.some(p => Math.hypot(p.x - nx, p.y - ny) < minDist);
+                if (!overlap) {
+                    pts.push({x: nx, y: ny});
+                    attempts = 0;
+                } else if (++attempts > 300) {
+                    minDist *= 0.9;
+                    attempts = 0;
+                }
+            }
+            const randomAngle = Math.random() * Math.PI * 2;
+            const cosA = Math.cos(randomAngle);
+            const sinA = Math.sin(randomAngle);
+            pts.sort((a, b) => (a.x * cosA + a.y * sinA) - (b.x * cosA + b.y * sinA));
+            return pts;
+        }
+
+        // ================= INTERACCIÓN DEL CANVAS =================
+        function setupCanvasEvents() {
+            canvas.addEventListener('pointerdown', onPointerDown);
+            window.addEventListener('pointermove', onPointerMove); // window para captar mov. rápidos
+            window.addEventListener('pointerup', onPointerUp);
+            window.addEventListener('pointercancel', onPointerUp); // p. ej. gesto del sistema en móvil
+        }
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            // Soporte para touch y mouse
+            let clientX = e.clientX;
+            let clientY = e.clientY;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            }
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        function getNodeAtPos(pos) {
+            for (let n of state.game.nodes) {
+                if (Math.hypot(n.x - pos.x, n.y - pos.y) <= state.game.nodeRadius + 5) {
+                    return n;
+                }
+            }
+            return null;
+        }
+
+        function getNode(id) {
+            return state.game.nodes.find(n => n.id === id);
+        }
+
+        function onPointerDown(e) {
+            if (!state.game.active) return;
+            e.preventDefault();
+
+            const pos = getMousePos(e);
+            const clickedNode = getNodeAtPos(pos);
+
+            if (!clickedNode) return;
+
+            // Iniciar desde el primer nodo de la secuencia
+            if (state.game.path.length === 0) {
+                if (clickedNode.id === 1) {
+                    state.game.path.push(1);
+                    state.game.lastValidNode = clickedNode;
+                    state.game.isDragging = true;
+                    state.game.dragPos = pos;
+                }
+                return;
+            }
+
+            // Si el jugador hace click en el ÚLTIMO nodo válido para retomar el trazo
+            if (clickedNode.id === state.game.lastValidNode.id) {
+                state.game.isDragging = true;
+                state.game.dragPos = pos;
+                return;
+            }
+
+            // BACKTRACKING: Si hace clic en un nodo ANTERIOR que ya está en el camino
+            if (state.game.path.includes(clickedNode.id)) {
+                const fromLabel = state.game.lastValidNode.label;
+                const toLabel = clickedNode.label;
+
+                // Cortar array hasta el nodo clickeado
+                const idx = state.game.path.indexOf(clickedNode.id);
+                state.game.path = state.game.path.slice(0, idx + 1);
+                state.game.lastValidNode = clickedNode;
+                state.game.isDragging = true;
+                state.game.dragPos = pos;
+
+                // Registrar métrica
+                state.metrics.corrections.push({from: fromLabel, to: toLabel});
+            }
+        }
+
+        function onPointerMove(e) {
+            if (!state.game.active || !state.game.isDragging) return;
+            e.preventDefault(); // Evitar scroll táctil
+
+            const pos = getMousePos(e);
+            state.game.dragPos = pos;
+
+            // 1. CHEQUEAR CRUCES DE LÍNEAS
+            // Comprobamos la línea actual (lastValidNode -> dragPos) contra todos los segmentos fijos
+            // Omitimos el último segmento conectado a lastValidNode porque comparten un vértice
+            let crossed = false;
+            const currentA = state.game.lastValidNode;
+            const currentB = pos;
+
+            for (let i = 0; i < state.game.path.length - 2; i++) {
+                const fixedA = getNode(state.game.path[i]);
+                const fixedB = getNode(state.game.path[i + 1]);
+
+                if (segmentsIntersect(currentA, currentB, fixedA, fixedB)) {
+                    crossed = true;
+                    break;
+                }
+            }
+
+            if (crossed) {
+                state.game.isDragging = false;
+                state.metrics.crosses++;
+                showErrorToast("¡Línea Cruzada!");
+                return; // Cortar dibujo, obliga a reiniciar desde el último punto
+            }
+
+            // 2. CHEQUEAR ALCANCE DE CUALQUIER NODO NO VISITADO
+            let reachedNode = null;
+            for (let n of state.game.nodes) {
+                if (!state.game.path.includes(n.id)) {
+                    if (Math.hypot(pos.x - n.x, pos.y - n.y) < state.game.nodeRadius) {
+                        reachedNode = n;
+                        break;
+                    }
+                }
+            }
+
+            if (reachedNode) {
+                const last = state.game.lastValidNode;
+
+                // ¿No es el elemento exactamente siguiente de la secuencia?
+                if (reachedNode.id !== last.id + 1) {
+                    // En la Parte B se distingue si el error fue por no alternar
+                    // (número→número o letra→letra) o por saltarse un elemento.
+                    if (state.currentPart === 'B' && isLetter(reachedNode.label) === isLetter(last.label)) {
+                        state.metrics.switchErrors++;
+                    } else {
+                        state.metrics.omissions++;
+                    }
+                }
+
+                // ¡Alcanzó el nodo!
+                state.game.path.push(reachedNode.id);
+                state.game.lastValidNode = reachedNode;
+
+                // ¿Terminó? Termina al conectar el último elemento (sin importar las omisiones)
+                if (reachedNode.id === state.game.nodes.length) {
+                    endPart("Completado");
+                    return;
+                }
+            }
+
+            // 3. CHEQUEAR BACKTRACKING POR ARRASTRE
+            // Solo al volver sobre el círculo INMEDIATAMENTE anterior (retroceder por la línea).
+            // Pasar por encima de un círculo más antiguo ya no borra varios tramos de golpe;
+            // para retroceder más, se repite el gesto círculo por círculo.
+            if (state.game.path.length >= 2) {
+                const prevNode = getNode(state.game.path[state.game.path.length - 2]);
+                if (Math.hypot(pos.x - prevNode.x, pos.y - prevNode.y) < state.game.nodeRadius) {
+                    state.metrics.corrections.push({from: state.game.lastValidNode.label, to: prevNode.label});
+                    state.game.path.pop();
+                    state.game.lastValidNode = prevNode;
+                }
+            }
+        }
+
+        function onPointerUp() {
+            if (!state.game.active || !state.game.isDragging) return;
+            state.game.isDragging = false;
+
+            // Si levanta el dedo y no ha terminado la parte, cuenta como interrupción
+            if (state.game.path.length > 0) {
+                state.metrics.lifts++;
+                showErrorToast("¡Interrupción!");
+            }
+        }
+
+        // --- Matemáticas de intersección de segmentos (algoritmo CCW) ---
+        function ccw(A, B, C) {
+            return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x);
+        }
+        function segmentsIntersect(A, B, C, D) {
+            return ccw(A, C, D) !== ccw(B, C, D) && ccw(A, B, C) !== ccw(A, B, D);
+        }
+
+        let toastTimeout = null;
+        function showErrorToast(msg) {
+            toast.innerText = msg;
+            toast.classList.remove('opacity-0');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => toast.classList.add('opacity-0'), 1000);
+        }
+
+        // ================= DIBUJADO Y ANIMACIÓN =================
+        function startDrawLoop() {
+            if (state.loopRunning) return;
+            state.loopRunning = true;
+            requestAnimationFrame(drawLoop);
+        }
+
+        function drawLoop() {
+            if (!isVisible('menu2')) { // No dibujar si no está activo
+                state.loopRunning = false;
+                return;
+            }
+            drawCanvas();
+            requestAnimationFrame(drawLoop);
+        }
+
+        function drawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const { strokeCol, fillCol, accentCol } = themeColors();
+            const r = state.game.nodeRadius;
+            const lastId = state.game.nodes.length;
+            const labelFont = `bold ${Math.round(r * 0.96)}px 'Patrick Hand', cursive`;
+            const smallFont = `${Math.max(11, Math.round(r * 0.56))}px 'Patrick Hand', cursive`;
+
+            // Dibujar lineas consolidadas
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = strokeCol;
+
+            if (state.game.path.length > 1) {
+                ctx.beginPath();
+                const startNode = getNode(state.game.path[0]);
+                ctx.moveTo(startNode.x, startNode.y);
+                for (let i = 1; i < state.game.path.length; i++) {
+                    const n = getNode(state.game.path[i]);
+                    ctx.lineTo(n.x, n.y);
+                }
+                ctx.stroke();
+            }
+
+            // Dibujar línea en progreso (arrastrando)
+            if (state.game.isDragging && state.game.lastValidNode) {
+                ctx.beginPath();
+                ctx.strokeStyle = accentCol; // Color diferente para la linea activa
+                ctx.setLineDash([10, 10]); // Linea punteada para indicar que no está fija
+                ctx.moveTo(state.game.lastValidNode.x, state.game.lastValidNode.y);
+                ctx.lineTo(state.game.dragPos.x, state.game.dragPos.y);
+                ctx.stroke();
+                ctx.setLineDash([]); // Reset
+                ctx.strokeStyle = strokeCol;
+            }
+
+            // Dibujar Nodos
+            ctx.lineWidth = 3;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            state.game.nodes.forEach(n => {
+                const isVisited = state.game.path.includes(n.id);
+                const isLast = state.game.lastValidNode && state.game.lastValidNode.id === n.id;
+
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+
+                if (isLast) {
+                    ctx.fillStyle = accentCol;
+                    ctx.strokeStyle = accentCol;
+                } else if (isVisited) {
+                    ctx.fillStyle = strokeCol;
+                    ctx.strokeStyle = strokeCol;
+                } else {
+                    ctx.fillStyle = fillCol;
+                    ctx.strokeStyle = strokeCol;
+                }
+
+                ctx.fill();
+                ctx.stroke();
+
+                // Dibujar Número o Letra
+                ctx.font = labelFont;
+                ctx.fillStyle = (isVisited || isLast) ? fillCol : strokeCol;
+                ctx.fillText(n.label, n.x, n.y);
+
+                // Indicador inicio/fin visual
+                ctx.font = smallFont;
+                if (n.id === 1 && !isVisited) {
+                    ctx.fillStyle = strokeCol;
+                    ctx.fillText("Inicio", n.x, n.y - r - 10);
+                }
+                if (n.id === lastId) {
+                    ctx.fillStyle = strokeCol;
+                    ctx.fillText("Fin", n.x, n.y - r - 10);
+                }
+            });
+        }
+
+        // Copia del trazo final (con fondo de papel) para mostrarlo en los resultados
+        function captureTrace() {
+            const off = document.createElement('canvas');
+            off.width = canvas.width;
+            off.height = canvas.height;
+            const octx = off.getContext('2d');
+            const paper = getComputedStyle(document.body).getPropertyValue('--paper-color').trim() || '#ffffff';
+            octx.fillStyle = paper;
+            octx.fillRect(0, 0, off.width, off.height);
+            octx.drawImage(canvas, 0, 0);
+            return off.toDataURL('image/png');
+        }
+
+        // ================= TEMPORIZADOR Y FIN =================
+        function formatClock(ms) {
+            const mins = Math.floor(ms / 60000);
+            const secs = Math.floor((ms % 60000) / 1000);
+            const mss = ms % 1000;
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(mss).padStart(3, '0')}`;
+        }
+
+        function formatTotal(ms) {
+            const mins = Math.floor(ms / 60000);
+            const secs = Math.floor((ms % 60000) / 1000);
+            const mss = ms % 1000;
+            return `${mins}m ${secs}s ${mss}ms`;
+        }
+
+        function updateTimer() {
+            state.timer.elapsed = Date.now() - state.timer.start;
+
+            // Chequear si se pasó del tiempo
+            if (state.timer.elapsed >= state.timer.limitMs) {
+                state.timer.elapsed = state.timer.limitMs;
+                endPart("Tiempo Agotado");
+                return;
+            }
+
+            document.getElementById('timer-display').innerText = formatClock(state.timer.elapsed);
+        }
+
+        function endPart(statusText) {
+            if (state.game.finished) return;
+            state.game.finished = true;
+            state.game.active = false;
+            state.game.isDragging = false;
+            clearInterval(state.timer.interval);
+
+            // Tiempo exacto al completar (el intervalo puede ir hasta 10 ms atrasado)
+            if (statusText === 'Completado') {
+                state.timer.elapsed = Math.min(Date.now() - state.timer.start, state.timer.limitMs);
+            }
+            document.getElementById('timer-display').innerText = formatClock(state.timer.elapsed);
+
+            drawCanvas(); // Dibuja la foto final
+
+            // Guardar resultados de esta parte
+            const part = state.currentPart;
+            state.results[part] = {
+                status: statusText,
+                elapsed: state.timer.elapsed,
+                lifts: state.metrics.lifts,
+                crosses: state.metrics.crosses,
+                omissions: state.metrics.omissions,
+                switchErrors: state.metrics.switchErrors,
+                corrections: state.metrics.corrections.slice(),
+                trace: captureTrace()
+            };
+
+            setTimeout(() => {
+                if (part === 'A') {
+                    showInstructions('B');   // Indicaciones antes de la Parte B
+                } else {
+                    showView('menu3');
+                    populateResults();
+                }
+            }, 500); // Pequeña pausa para ver el resultado final
+        }
+
+        // ================= RESULTADOS =================
+        function populateResults() {
+            const A = state.results.A;
+            const B = state.results.B;
+
+            // Llenar datos base
+            document.getElementById('res-fullname').innerText = `${state.evalData.names} ${state.evalData.surnames}`.trim();
+            document.getElementById('res-dni').innerText = state.evalData.dni;
+            document.getElementById('res-date').innerText = state.evalData.date;
+            document.getElementById('res-time').innerText = state.evalData.time;
+            document.getElementById('res-age').innerText = state.evalData.age;
+            document.getElementById('res-code').innerText = state.evalData.code;
+            document.getElementById('res-limit').innerText = `${state.evalData.timeLimit} min`;
+
+            // Tabla comparativa
+            const rows = [
+                ['⏱️ Tiempo total', formatTotal(A.elapsed), formatTotal(B.elapsed)],
+                ['🏁 Estado', A.status, B.status, 'status'],
+                ['👆 Interrupciones (dedo levantado)', A.lifts, B.lifts, 'error'],
+                ['❌ Trazos cruzados', A.crosses, B.crosses, 'error'],
+                ['⚠️ Omisiones (saltos)', A.omissions, B.omissions, 'warn'],
+                ['🔀 Errores de alternancia', '—', B.switchErrors, 'warn'],
+                ['↩️ Correcciones', A.corrections.length, B.corrections.length]
+            ];
+
+            const tbody = document.getElementById('res-table-body');
+            tbody.innerHTML = '';
+            rows.forEach(([label, a, b, kind]) => {
+                const tr = document.createElement('tr');
+                const tdLabel = document.createElement('td');
+                tdLabel.className = 'py-2 pr-2';
+                tdLabel.textContent = label;
+                tr.appendChild(tdLabel);
+
+                [a, b].forEach(v => {
+                    const td = document.createElement('td');
+                    td.className = 'py-2 px-1 sm:px-2 text-center font-bold text-lg sm:text-xl';
+                    td.textContent = v;
+                    if (kind === 'status') {
+                        td.style.color = v === 'Completado' ? '#16a34a' : '#ef4444';
+                    } else if (kind === 'error' && v !== '—') {
+                        td.style.color = '#ef4444';
+                    } else if (kind === 'warn' && v !== '—') {
+                        td.style.color = '#f97316';
+                    }
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+
+            // Índices derivados: solo tienen sentido si ambas partes tienen la misma
+            // cantidad de círculos (con 10 vs 20 el tiempo de B incluye el doble de trazos)
+            const box = document.getElementById('res-derived-box');
+            const note = document.getElementById('res-derived-note');
+            if (NODES_A !== NODES_B) {
+                box.classList.add('hidden');
+            } else if (A.status === 'Completado' && B.status === 'Completado' && A.elapsed > 0) {
+                box.classList.remove('hidden');
+                const diff = (B.elapsed - A.elapsed) / 1000;
+                const ratio = B.elapsed / A.elapsed;
+                document.getElementById('res-diff').innerText = `${diff >= 0 ? '+' : ''}${diff.toFixed(2)} s`;
+                document.getElementById('res-ratio').innerText = ratio.toFixed(2);
+                note.classList.add('hidden');
+            } else {
+                box.classList.remove('hidden');
+                document.getElementById('res-diff').innerText = '—';
+                document.getElementById('res-ratio').innerText = '—';
+                note.classList.remove('hidden');
+            }
+
+            // Correcciones de cada parte
+            fillCorrections('A', A.corrections);
+            fillCorrections('B', B.corrections);
+
+            // Trazos finales
+            document.getElementById('res-trace-A').src = A.trace;
+            document.getElementById('res-trace-B').src = B.trace;
+
+            // Enviar una sola fila a Google Sheets al finalizar ambas partes.
+            saveResultsToGoogleSheets();
+            window.scrollTo(0, 0);
+        }
+
+        async function saveResultsToGoogleSheets() {
+            const status = document.getElementById('sheets-save-status');
+            if (!GOOGLE_SHEETS_WEB_APP_URL || GOOGLE_SHEETS_WEB_APP_URL.includes('PEGA_AQUI')) {
+                status.textContent = 'Registro automático sin configurar: pega la URL de Apps Script en el código HTML.';
+                return;
+            }
+
+            const A = state.results.A || {};
+            const B = state.results.B || {};
+            const payload = {
+                nombres: state.evalData.names, apellidos: state.evalData.surnames, dni: state.evalData.dni,
+                fecha: state.evalData.date, hora: state.evalData.time, edad: state.evalData.age,
+                codigo: state.evalData.code, limiteMinutos: state.evalData.timeLimit,
+                estadoA: A.status || '', tiempoA_ms: A.elapsed ?? '', tiempoA_segundos: A.elapsed != null ? (A.elapsed / 1000).toFixed(2) : '',
+                interrupcionesA: A.lifts ?? '', crucesA: A.crosses ?? '', omisionesA: A.omissions ?? '', correccionesA: A.corrections ? A.corrections.length : '',
+                estadoB: B.status || '', tiempoB_ms: B.elapsed ?? '', tiempoB_segundos: B.elapsed != null ? (B.elapsed / 1000).toFixed(2) : '',
+                interrupcionesB: B.lifts ?? '', crucesB: B.crosses ?? '', omisionesB: B.omissions ?? '', erroresAlternanciaB: B.switchErrors ?? '', correccionesB: B.corrections ? B.corrections.length : '',
+                diferenciaSegundos: A.elapsed != null && B.elapsed != null ? ((B.elapsed - A.elapsed) / 1000).toFixed(2) : '',
+                razonB_sobre_A: A.elapsed > 0 && B.elapsed != null ? (B.elapsed / A.elapsed).toFixed(3) : '',
+                detalleCorreccionesA: JSON.stringify(A.corrections || []), detalleCorreccionesB: JSON.stringify(B.corrections || []),
+                userAgent: navigator.userAgent
+            };
+
+            status.textContent = 'Enviando resultados a Google Sheets…';
+            try {
+                // text/plain evita una solicitud CORS de preflight al usar el HTML local.
+                await fetch(GOOGLE_SHEETS_WEB_APP_URL, {
+                    method: 'POST', mode: 'no-cors',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+                // En no-cors el navegador no permite leer la respuesta; esto confirma el intento, no la escritura final.
+                status.textContent = 'Solicitud enviada. Verifica que aparezca una nueva fila en Google Sheets.';
+            } catch (err) {
+                console.error('Error al enviar a Google Sheets:', err);
+                status.textContent = 'No se pudo enviar. Revisa tu conexión y la URL de Apps Script.';
+            }
+        }
+
+        function fillCorrections(part, corrections) {
+            document.getElementById(`res-corrections-count-${part}`).innerText = corrections.length;
+            const listObj = document.getElementById(`res-corrections-list-${part}`);
+            listObj.innerHTML = '';
+            if (corrections.length === 0) {
+                listObj.innerHTML = '<p class="italic">Ninguna corrección realizada.</p>';
+            } else {
+                corrections.forEach((c, idx) => {
+                    const li = document.createElement('div');
+                    li.innerText = `${idx + 1}. Regresó del ${c.from} al ${c.to}.`;
+                    listObj.appendChild(li);
+                });
+            }
+        }
+
+        // ================= DESCARGA =================
+        function downloadResults() {
+            const btn = document.getElementById('btn-download');
+            btn.innerText = "Generando...";
+            btn.disabled = true;
+
+            const card = document.getElementById('results-card');
+            card.classList.add('exporting'); // Expande las listas para que salgan completas
+
+            html2canvas(card, {
+                backgroundColor: state.theme === 'dark' ? '#2d3748' : '#ffffff',
+                scale: 2 // Mayor calidad
+            }).then(canvasImg => {
+                const link = document.createElement('a');
+                link.download = `TMT_AB_Resultados_${state.evalData.code}_${state.evalData.date}.png`;
+                link.href = canvasImg.toDataURL('image/png');
+                link.click();
+            }).catch(err => {
+                console.error(err);
+                alert("Hubo un error al generar la imagen.");
+            }).finally(() => {
+                card.classList.remove('exporting');
+                btn.innerHTML = DOWNLOAD_ICON;
+                btn.disabled = false;
+            });
+        }
+
+        // Arrancar
+        window.onload = init;
+    </script>
+</body>
+</html>
